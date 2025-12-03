@@ -31,7 +31,7 @@ export const ResultCard: React.FC<ResultCardProps> = ({ candidate, rank, onClick
           {candidate.name}
         </h3>
         <p className="text-sm text-gray-500 truncate">
-          File size: {(candidate.file.size / 1024).toFixed(1)} KB
+          File size: {(candidate.size / 1024).toFixed(1)} KB
         </p>
       </div>
 

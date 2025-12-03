@@ -1,5 +1,5 @@
 {
-  "name": "CV Scout - Semantic Candidate Ranking",
+  "name": "Resume Rank - Semantic Candidate Ranking",
   "description": "Securely upload job specifications and candidate CVs to rank applicants based on semantic relevance using Gemini embeddings. All processing is done locally in your browser session.",
   "requestFramePermissions": []
 }
