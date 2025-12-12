@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { DropZone } from './components/DropZone';
 import { ResultCard } from './components/ResultCard';
@@ -35,12 +34,24 @@ const App: React.FC = () => {
 
   // Initialize Auth Listener and Model
   useEffect(() => {
-    const unsubscribe = authService.subscribeToAuthChanges((currentUser) => {
+    const unsubscribe = authService.subscribeToAuthChanges(async (currentUser) => {
       setUser(currentUser);
       setIsAuthLoading(false);
       
       if (currentUser) {
-        refreshJobs(currentUser.uid);
+        // 1. Load the list of jobs from Firestore
+        const jobs = await refreshJobs(currentUser.uid);
+        
+        // 2. CHECK LOCAL STORAGE: Did the user have a job open before reload?
+        const lastActiveJobId = localStorage.getItem('activeJobId');
+        
+        if (lastActiveJobId && jobs.length > 0) {
+          const jobToRestore = jobs.find(j => j.id === lastActiveJobId);
+          if (jobToRestore) {
+            console.log("Restoring previous session...");
+            handleSelectJob(jobToRestore); 
+          }
+        }
       } else {
         // Clear sensitive data on logout
         clearWorkspace();
@@ -57,12 +68,15 @@ const App: React.FC = () => {
     try {
       const jobs = await jobService.getJobs(userId);
       setSavedJobs(jobs);
+      return jobs; // Return jobs for chaining in useEffect
     } catch (err) {
       console.error("Failed to load jobs:", err);
+      return [];
     }
   };
 
   const handleLogout = async () => {
+    localStorage.removeItem('activeJobId'); // Clear session memory
     await authService.logout();
     setIsSidebarOpen(true);
   };
@@ -75,27 +89,28 @@ const App: React.FC = () => {
     setErrorMessage(null);
     setCurrentJobId(null);
     setJobName("Untitled Job");
+    localStorage.removeItem('activeJobId'); // Stop remembering this job
   };
 
   const handleCreateNewJob = () => {
     clearWorkspace();
     if (window.innerWidth < 1024) {
-      setIsSidebarOpen(false); // Close sidebar on mobile after action
+      setIsSidebarOpen(false); 
     }
   };
 
   const handleSaveJob = async () => {
     if (!user) return;
     
-    // If no name has been set (it's default), ask for one
     let nameToSave = jobName;
     if (!currentJobId && jobName === "Untitled Job") {
       const inputName = window.prompt("Enter a name for this job:", "New Job Spec");
-      if (!inputName) return; // Cancelled
+      if (!inputName) return; 
       nameToSave = inputName;
       setJobName(nameToSave);
     }
 
+    // Ensure we aren't saving an empty state effectively
     const newJob: SavedJob = {
       id: currentJobId || `job-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
       userId: user.uid,
@@ -108,6 +123,10 @@ const App: React.FC = () => {
     try {
       await jobService.saveJob(newJob);
       setCurrentJobId(newJob.id);
+      
+      // Save ID to local storage so it persists on reload
+      localStorage.setItem('activeJobId', newJob.id);
+
       await refreshJobs(user.uid);
       alert("Job saved successfully!");
     } catch (e: any) {
@@ -118,6 +137,12 @@ const App: React.FC = () => {
   const handleSelectJob = (job: SavedJob) => {
     setCurrentJobId(job.id);
     setJobName(job.name);
+    
+    // Remember this choice
+    localStorage.setItem('activeJobId', job.id);
+
+    // Note: Firestore strips the 'File' object. 
+    // We rely on 'text' content and 'name' for the UI.
     setJobSpec(job.jobSpec);
     
     const hasScores = job.candidates.some(c => c.score !== undefined && c.score >= 0);
@@ -233,13 +258,11 @@ const App: React.FC = () => {
 
     if (newCandidates.length > 0) {
       setCandidates(prev => [...prev, ...newCandidates]);
-      if (results.length > 0) setResults([]); // Reset results on new upload
+      if (results.length > 0) setResults([]); 
     }
 
     if (failCount > 0) {
       setErrorMessage(`Successfully added ${successCount} files. Failed to read ${failCount} files. Last error: ${lastError}`);
-    } else if (successCount === 0 && files.length > 0) {
-      setErrorMessage(`No files were added. Error: ${lastError || "Unknown error"}`);
     }
     
     setStatus(AppStatus.IDLE);
@@ -259,7 +282,6 @@ const App: React.FC = () => {
       const analyzedCandidates = await Promise.all(
         candidates.map(async (candidate) => {
           try {
-            // Optimisation: use stored embedding if available
             let embedding = (candidate as CandidateResult).embedding;
             if (!embedding) {
                embedding = await generateEmbedding(candidate.text);
@@ -283,7 +305,7 @@ const App: React.FC = () => {
     } catch (err) {
       console.error(err);
       setLoadingModel(false);
-      setErrorMessage("Analysis failed. Please check if your browser supports WebGL or WebAssembly for local AI.");
+      setErrorMessage("Analysis failed. Check WebGL support.");
       setStatus(AppStatus.ERROR);
     }
   };
@@ -293,7 +315,6 @@ const App: React.FC = () => {
     setResults(prev => prev.filter(c => c.id !== id));
   };
 
-  // Auth Loading Screen
   if (isAuthLoading) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-gray-50">
@@ -305,16 +326,12 @@ const App: React.FC = () => {
     );
   }
 
-  // Auth Screen (Login/Register)
   if (!user) {
-    return <AuthScreen onLoginSuccess={() => {}} />; // Callback handled by listener
+    return <AuthScreen onLoginSuccess={() => {}} />; 
   }
 
-  // Main App Interface
   return (
     <div className="flex h-screen bg-gray-50 overflow-hidden font-sans">
-      
-      {/* Sidebar */}
       <SidePanel 
         isOpen={isSidebarOpen}
         onClose={() => setIsSidebarOpen(false)}
@@ -324,22 +341,16 @@ const App: React.FC = () => {
         onDeleteJob={handleDeleteJob}
         onCreateNew={handleCreateNewJob}
       />
-
-      {/* Main Content Wrapper */}
       <div className="flex-1 flex flex-col min-w-0 bg-gray-50 h-full">
-        
-        {/* Header */}
         <header className="bg-white border-b border-gray-200 flex-shrink-0 z-20">
           <div className="px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
             <div className="flex items-center gap-3">
-              {/* Sidebar Toggle */}
               <button 
                 onClick={() => setIsSidebarOpen(!isSidebarOpen)}
                 className="p-2 -ml-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-md focus:outline-none"
               >
                 <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" /></svg>
               </button>
-
               <div className="flex items-center gap-2">
                  <div className="bg-indigo-600 rounded-lg p-1.5">
                     <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
@@ -354,9 +365,7 @@ const App: React.FC = () => {
                  </div>
               </div>
             </div>
-
             <div className="flex items-center gap-4">
-               {/* Status Indicator */}
                {status === AppStatus.ANALYZING && (
                  <span className="hidden sm:flex items-center text-sm text-indigo-600 font-medium animate-pulse">
                    <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-indigo-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
@@ -366,19 +375,15 @@ const App: React.FC = () => {
                    {loadingModel ? 'Loading Model...' : 'Processing...'}
                  </span>
                )}
-
-               {/* Save Button */}
                <button 
                   onClick={handleSaveJob}
                   disabled={!user || status === AppStatus.ANALYZING}
                   className="flex items-center gap-1.5 bg-white border border-gray-300 text-gray-700 hover:bg-gray-50 px-3 py-1.5 rounded-md text-sm font-medium transition-colors shadow-sm disabled:opacity-50"
                >
                   <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" /></svg>
-                  Save to Cloud
+                  Save Job
                </button>
-
                <div className="h-6 w-px bg-gray-200"></div>
-
                <div className="flex items-center gap-3">
                  <span className="text-sm font-medium text-gray-700 hidden sm:block">
                    {user.username}
@@ -394,10 +399,8 @@ const App: React.FC = () => {
           </div>
         </header>
 
-        {/* Scrollable Main Content */}
         <main className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8">
           <div className="max-w-7xl mx-auto">
-          
             {errorMessage && (
               <div className="mb-6 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded relative" role="alert">
                 <strong className="font-bold">Notice: </strong>
@@ -409,8 +412,6 @@ const App: React.FC = () => {
             )}
 
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-              
-              {/* Left Column: Job Spec (4 cols) */}
               <div className="lg:col-span-4 space-y-6">
                 <div className="bg-white rounded-2xl shadow-sm p-6 border border-gray-100">
                   <div className="flex justify-between items-center mb-4">
@@ -440,7 +441,7 @@ const App: React.FC = () => {
                         <div className="overflow-hidden">
                            <p className="font-medium text-indigo-900 truncate" title={jobSpec.name}>{jobSpec.name}</p>
                            <p className="text-xs text-indigo-500 mt-1">
-                            {jobSpec.size ? (jobSpec.size / 1024).toFixed(1) + ' KB' : 'Size unavailable'}
+                            {jobSpec.size ? (jobSpec.size / 1024).toFixed(1) + ' KB' : 'Stored in Cloud'}
                            </p>
                         </div>
                         <div className="text-indigo-400">
@@ -514,7 +515,6 @@ const App: React.FC = () => {
                 </button>
               </div>
 
-              {/* Right Column: Results (8 cols) */}
               <div className="lg:col-span-8">
                 <div className="bg-white rounded-2xl shadow-sm min-h-[600px] border border-gray-100 flex flex-col h-full">
                   <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-gray-50/50 rounded-t-2xl">
@@ -568,7 +568,6 @@ const App: React.FC = () => {
         </main>
       </div>
 
-      {/* Preview Modal */}
       {previewFile && (
         <PreviewModal 
           file={previewFile} 

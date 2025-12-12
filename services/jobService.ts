@@ -40,34 +40,35 @@ export const saveJob = async (job: SavedJob): Promise<void> => {
   try {
     if (!job.userId) throw new Error("User ID is required to save a job");
 
-    // Deep clean the object to remove any undefined values or Functions (which Firestore hates)
-    // Also strip out the 'file' objects if they accidentally leaked in (though our type says optional)
+    // Deep clean the object to remove any undefined values or Functions.
+    // Specifically, we need to remove the 'file' object from candidates and jobSpec,
+    // as File objects cannot be stored in Firestore.
+
+    const cleanCandidates = job.candidates.map(c => {
+      const { file, ...rest } = c; // Remove the 'file' property
+      return {
+        ...rest,
+        summary: rest.summary || null,
+        embedding: rest.embedding || [],
+      };
+    });
+
+    const cleanJobSpec = job.jobSpec ? (({ file, ...rest }) => rest)(job.jobSpec) : null;
+
     const cleanJob = {
       ...job,
       updatedAt: Timestamp.fromMillis(job.updatedAt), // Use Firestore Timestamp
-      candidates: job.candidates.map(c => {
-         const { file, ...rest } = c; // Ensure no File object
-         return {
-           ...rest,
-           // Ensure undefined fields are null or removed
-           summary: rest.summary || null,
-           embedding: rest.embedding || [] 
-         };
-      }),
-      jobSpec: job.jobSpec ? {
-        ...job.jobSpec,
-        file: null // Ensure no File object
-      } : null
+      jobSpec: cleanJobSpec,
+      candidates: cleanCandidates,
     };
 
-    // Remove the file property from jobSpec inside cleanJob if it exists (extra safety)
-    if (cleanJob.jobSpec && 'file' in cleanJob.jobSpec) {
-      delete (cleanJob.jobSpec as any).file;
-    }
+    // Remove the top-level 'file' properties if they exist, just in case.
+    delete (cleanJob as any).file;
+
 
     const jobDocRef = doc(db, 'users', job.userId, 'jobs', job.id);
     await setDoc(jobDocRef, cleanJob);
-    
+
   } catch (error: any) {
     console.error("Failed to save job to Firestore", error);
     if (error.code === 'permission-denied') {
