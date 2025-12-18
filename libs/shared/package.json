@@ -1,0 +1,9 @@
+{
+    "name": "@intelli-hire/shared",
+    "version": "0.0.0",
+    "main": "./src/index.ts",
+    "types": "./src/index.ts",
+    "scripts": {
+        "lint": "eslint . --ext .ts,.tsx"
+    }
+}
