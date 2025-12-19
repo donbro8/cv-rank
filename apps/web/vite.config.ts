@@ -14,7 +14,7 @@ export default defineConfig({
     }
   },
   optimizeDeps: {
-    exclude: ['@xenova/transformers', 'onnxruntime-web'], // Often better to exclude from optimization due to dynamic imports
+    // exclude: ['@xenova/transformers', 'onnxruntime-web'], // Removed exclusion to fix registerBackend error
     include: ['long'] // Explicitly include 'long' to prevent "module not found" errors in some CommonJS contexts
   },
   define: {

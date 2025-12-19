@@ -310,10 +310,10 @@ export const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
             setResults(sortedResults);
             setStatus(AppStatus.COMPLETE);
 
-        } catch (err) {
+        } catch (err: any) {
             console.error(err);
             setLoadingModel(false);
-            setErrorMessage("Analysis failed. Check WebGL support.");
+            setErrorMessage(`Analysis failed: ${err.message || "Unknown error"}`);
             setStatus(AppStatus.ERROR);
         }
     };

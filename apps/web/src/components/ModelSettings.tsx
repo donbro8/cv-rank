@@ -9,7 +9,6 @@ interface ModelSettingsProps {
 const AVAILABLE_MODELS = [
     { id: 'Xenova/all-MiniLM-L6-v2', name: 'MiniLM-L6-v2', description: 'Fastest (45MB)', recommended: true },
     { id: 'Xenova/bge-small-en-v1.5', name: 'BGE-Small-EN', description: 'Accurate (67MB)' },
-    { id: 'Xenova/bge-m3', name: 'BGE-M3', description: 'Multilingual (500MB+)' },
 ];
 
 export const ModelSettings: React.FC<ModelSettingsProps> = ({ isOpen, onClose }) => {

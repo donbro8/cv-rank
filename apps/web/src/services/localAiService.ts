@@ -39,10 +39,30 @@ class LocalAIService {
 
       const transformers = await this.getTransformers();
 
+      if (!transformers.env.backends.onnx) {
+        console.warn('Warning: transformers.env.backends.onnx is undefined');
+      } else {
+        console.log('Transformers configured backends:', {
+          onnx: transformers.env.backends.onnx,
+          wasm: transformers.env.backends.onnx?.wasm
+        });
+      }
+
       // feature-extraction pipeline for embeddings
-      // Dispose previous if exists? Pipeline doesn't self-destruct easily, but we can just overwrite the reference.
-      // JS Garbage collection should handle the rest eventually.
-      this.instance = await transformers.pipeline('feature-extraction', modelId);
+      try {
+        // Try loading with default settings (usually auto/webgl)
+        this.instance = await transformers.pipeline('feature-extraction', modelId);
+      } catch (firstError) {
+        console.warn(`Initial model load failed, attempting fallback to WASM/CPU...`, firstError);
+        // Fallback: try forcing cpu (which uses wasm)
+        // Disable proxying to web worker if it's causing issues
+        if (transformers.env.backends.onnx?.wasm) {
+          transformers.env.backends.onnx.wasm.proxy = false;
+        }
+
+        this.instance = await transformers.pipeline('feature-extraction', modelId, { device: 'cpu' });
+      }
+
       this.currentModelId = modelId;
       console.log(`AI Model ${modelId} loaded successfully.`);
     } catch (err) {
