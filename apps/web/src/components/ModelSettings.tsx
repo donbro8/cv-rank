@@ -11,7 +11,10 @@ const AVAILABLE_MODELS = [
     { id: 'Xenova/bge-small-en-v1.5', name: 'BGE-Small-EN', description: 'Accurate (67MB)' },
 ];
 
+import { usePrivacy } from '../context/PrivacyContext';
+
 export const ModelSettings: React.FC<ModelSettingsProps> = ({ isOpen, onClose }) => {
+    const { isPrivacyMode, setPrivacyMode } = usePrivacy();
     const [currentModel, setCurrentModel] = useState<string>('');
     const [loading, setLoading] = useState(false);
     const dropdownRef = useRef<HTMLDivElement>(null);
@@ -58,10 +61,19 @@ export const ModelSettings: React.FC<ModelSettingsProps> = ({ isOpen, onClose })
             ref={dropdownRef}
             className="absolute right-0 top-full mt-2 w-72 bg-white rounded-lg shadow-xl border border-gray-200 z-50 overflow-hidden transform transition-all"
         >
-            <div className="p-3 border-b border-gray-100 bg-gray-50">
+            <div className="p-3 border-b border-gray-100 bg-gray-50 flex justify-between items-center">
                 <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
                     AI Model Selection
                 </h3>
+                <div className="flex items-center gap-2">
+                    <span className="text-[10px] text-gray-500 font-medium">{isPrivacyMode ? 'Privacy On' : 'Cloud On'}</span>
+                    <button
+                        onClick={() => setPrivacyMode(!isPrivacyMode)}
+                        className={`relative inline-flex h-4 w-8 items-center rounded-full transition-colors focus:outline-none ${isPrivacyMode ? 'bg-green-500' : 'bg-gray-300'}`}
+                    >
+                        <span className={`inline-block h-3 w-3 transform rounded-full bg-white transition-transform ${isPrivacyMode ? 'translate-x-4' : 'translate-x-1'}`} />
+                    </button>
+                </div>
             </div>
 
             <div className="p-2 space-y-1">

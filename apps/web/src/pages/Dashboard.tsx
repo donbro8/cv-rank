@@ -9,6 +9,8 @@ import { generateEmbedding, preloadModel, getAiModel } from '../services/localAi
 import { cosineSimilarity } from '../utils/math';
 import * as authService from '../services/authService';
 import * as jobService from '../services/jobService';
+import { usePrivacy } from '../context/PrivacyContext';
+import { uploadFile } from '../services/fileService';
 
 interface DashboardProps {
     user: authService.User;
@@ -17,9 +19,11 @@ interface DashboardProps {
 
 export const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
     // Job State
+    // Job State
     const [currentJobId, setCurrentJobId] = useState<string | null>(null);
     const [jobName, setJobName] = useState<string>("Untitled Job");
     const [savedJobs, setSavedJobs] = useState<SavedJob[]>([]);
+    const { isPrivacyMode } = usePrivacy();
 
     // App Data State
     const [jobSpec, setJobSpec] = useState<DocumentFile | null>(null);
@@ -239,6 +243,18 @@ export const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
             }
 
             try {
+                // Upload to Firebase if not in Privacy Mode
+                if (!isPrivacyMode && user) {
+                    try {
+                        const path = `resumes/${user.uid}/${Date.now()}_${file.name}`;
+                        console.log(`Uploading ${file.name} to ${path}...`);
+                        await uploadFile(file, path);
+                        console.log("Upload complete.");
+                    } catch (uploadErr) {
+                        console.error("Upload failed (continuing with local processing):", uploadErr);
+                    }
+                }
+
                 const text = await readFileContent(file);
                 if (!text || text.trim().length === 0) {
                     console.warn(`Skipping empty file: ${file.name}`);

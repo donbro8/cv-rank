@@ -1,83 +1,77 @@
-// Dynamic import to prevent onnxruntime-web from crashing the app on load
+// Local AI Service using Web Worker
+// This prevents the main thread from freezing during model load and inference.
 
 class LocalAIService {
-  static instance: any = null;
+  static worker: Worker | null = null;
   static currentModelId = 'Xenova/all-MiniLM-L6-v2';
-  static isLoading = false;
-  static transformersModule: any = null;
+  static isWorkerReady = false;
+  static pendingRequests: Map<string, { resolve: Function, reject: Function }> = new Map();
 
-  static async getTransformers() {
-    if (this.transformersModule) return this.transformersModule;
+  static initializeWorker() {
+    if (this.worker) return;
 
-    // Dynamic import
-    const transformers = await import('@xenova/transformers');
-    this.transformersModule = transformers;
+    this.worker = new Worker(new URL('../workers/ai.worker.ts', import.meta.url), {
+      type: 'module'
+    });
 
-    // Configure transformers ONLY ONCE
-    transformers.env.allowLocalModels = false;
-    transformers.env.useBrowserCache = true;
+    this.worker.onmessage = (event) => {
+      const { type, data, error, status } = event.data;
+      console.log('LocalAIService received worker message:', type, data);
 
-    return transformers;
-  }
-
-  static async getInstance() {
-    if (!this.instance && !this.isLoading) {
-      await this.loadModel(this.currentModelId);
-    }
-    // Wait for instance if it's currently loading
-    while (this.isLoading && !this.instance) {
-      await new Promise(resolve => setTimeout(resolve, 100));
-    }
-    return this.instance;
-  }
-
-  static async loadModel(modelId: string) {
-    if (this.isLoading) return;
-    this.isLoading = true;
-    try {
-      console.log(`Loading AI Model: ${modelId}...`);
-
-      const transformers = await this.getTransformers();
-
-      if (!transformers.env.backends.onnx) {
-        console.warn('Warning: transformers.env.backends.onnx is undefined');
-      } else {
-        console.log('Transformers configured backends:', {
-          onnx: transformers.env.backends.onnx,
-          wasm: transformers.env.backends.onnx?.wasm
-        });
+      if (type === 'init_complete') {
+        console.log(`LocalAIService: Worker initialized successfully.`);
+        this.isWorkerReady = true;
+        LocalAIService.notifySubscribers({ status: 'ready', progress: 100 });
       }
+      else if (type === 'generate_complete') {
+        // For simplicity in this naive implementation, we assume one request at a time 
+        // or we just resolve the latest. Ideally we need IDs.
+        // But for this use case (single user flow), a simple queue/listener is okay, 
+        // or we can use a simpler approach: event listeners per request.
+        // However, to keep it robust, let's just dispatch an event or use a promise created at call time.
+        // Actually, since this is a static service, we need to bridge the gap.
+        // Let's use a simpler "Request-Response" ID system if we were rewriting fully., 
+        // but for now, we'll assume linear usage or implement a simple callback storage inside the method.
+      } else if (type === 'download_progress') {
+        const normalizedData = {
+          ...data,
+          progress: typeof data.progress === 'number' ? data.progress : 0,
+        };
 
-      // feature-extraction pipeline for embeddings
-      try {
-        // Try loading with default settings (usually auto/webgl)
-        this.instance = await transformers.pipeline('feature-extraction', modelId);
-      } catch (firstError) {
-        console.warn(`Initial model load failed, attempting fallback to WASM/CPU...`, firstError);
-        // Fallback: try forcing cpu (which uses wasm)
-        // Disable proxying to web worker if it's causing issues
-        if (transformers.env.backends.onnx?.wasm) {
-          transformers.env.backends.onnx.wasm.proxy = false;
+        // Only track progress for the main model file (.onnx) to avoid 
+        // the progress bar jumping to 100% then 0% for small config files.
+        if (normalizedData.file && !normalizedData.file.endsWith('.onnx')) {
+          return;
         }
 
-        this.instance = await transformers.pipeline('feature-extraction', modelId, { device: 'cpu' });
+        console.log(`[Model Download]: ${normalizedData.status} - ${normalizedData.progress}%`);
+        LocalAIService.notifySubscribers(normalizedData);
       }
+    };
 
-      this.currentModelId = modelId;
-      console.log(`AI Model ${modelId} loaded successfully.`);
-    } catch (err) {
-      console.error(`Failed to load transformers/local AI (${modelId})`, err);
-      throw err;
-    } finally {
-      this.isLoading = false;
-    }
+    // Initial load
+    this.worker.postMessage({ type: 'init', data: { modelId: this.currentModelId } });
+  }
+
+  static subscribers: ((progress: any) => void)[] = [];
+
+  static subscribe(callback: (progress: any) => void) {
+    this.subscribers.push(callback);
+    return () => {
+      this.subscribers = this.subscribers.filter(cb => cb !== callback);
+    };
+  }
+
+  static notifySubscribers(data: any) {
+    this.subscribers.forEach(cb => cb(data));
   }
 
   static async setModel(modelId: string) {
-    if (modelId === this.currentModelId && this.instance) return;
+    this.currentModelId = modelId;
+    if (!this.worker) this.initializeWorker();
 
-    this.instance = null; // Clear current instance
-    await this.loadModel(modelId);
+    // Re-init worker with new model
+    this.worker?.postMessage({ type: 'init', data: { modelId } });
   }
 
   static getModelId(): string {
@@ -85,19 +79,37 @@ class LocalAIService {
   }
 
   static async generateEmbedding(text: string): Promise<number[]> {
-    try {
-      const extractor = await this.getInstance();
-      if (!extractor) throw new Error("AI Model not initialized");
+    if (!this.worker) this.initializeWorker();
 
-      // Generate embedding
-      const output = await extractor(text, { pooling: 'mean', normalize: true });
+    return new Promise((resolve, reject) => {
+      const worker = this.worker!;
+      const requestId = Math.random().toString(36).substring(7);
 
-      // Convert Float32Array to regular number array
-      return Array.from(output.data);
-    } catch (e) {
-      console.error("Embedding generation failed", e);
-      throw e;
-    }
+      const handler = (event: MessageEvent) => {
+        const { type, data, error, requestId: responseId } = event.data;
+
+        // Only respond to messages that match our request ID
+        if (responseId !== requestId) return;
+
+        if (type === 'generate_complete') {
+          worker.removeEventListener('message', handler);
+          resolve(data);
+        } else if (type === 'error') {
+          worker.removeEventListener('message', handler);
+          reject(new Error(error));
+        }
+      };
+
+      worker.addEventListener('message', handler);
+      worker.postMessage({
+        type: 'generate',
+        data: { text, modelId: this.currentModelId, requestId }
+      });
+    });
+  }
+
+  static async preloadModel() {
+    this.initializeWorker();
   }
 }
 
@@ -113,10 +125,13 @@ export const getAiModel = (): string => {
   return LocalAIService.getModelId();
 };
 
-export const preloadModel = async () => {
-  try {
-    await LocalAIService.getInstance();
-  } catch (e) {
-    console.warn("Model preload failed (non-fatal):", e);
-  }
+export const onModelProgress = (callback: (progress: any) => void) => {
+  return LocalAIService.subscribe(callback);
 };
+
+export const preloadModel = async () => {
+  // Notify subscribers immediately that we are starting
+  LocalAIService.notifySubscribers({ status: 'initiate', progress: 0 });
+  return LocalAIService.preloadModel();
+};
+

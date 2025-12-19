@@ -19,7 +19,7 @@ export default defineConfig({
   },
   define: {
     // Some libraries expect 'global' to exist
-    global: 'window',
+    global: 'globalThis',
     'process.env': {},
     'import.meta.env.VITE_FIREBASE_API_KEY': JSON.stringify('dummy'),
     'import.meta.env.VITE_FIREBASE_AUTH_DOMAIN': JSON.stringify('dummy'),

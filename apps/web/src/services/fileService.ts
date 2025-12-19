@@ -84,3 +84,40 @@ export const readFileContent = async (file: File): Promise<string> => {
 
     throw new Error(`Unsupported file type: ${file.type}`);
 };
+
+export const extractMetadata = async (text: string) => {
+    // Basic heuristic extraction
+    const emailRegex = /([a-zA-Z0-9._-]+@[a-zA-Z0-9._-]+\.[a-zA-Z0-9_-]+)/;
+    const emailMatch = text.match(emailRegex);
+
+    // Very naive Name extraction (assumes name is often at the top)
+    const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+    const possibleName = lines.length > 0 ? lines[0] : "Unknown Candidate";
+
+    // Basic skills keyword matching (expand this list as needed)
+    const commonSkills = ["React", "TypeScript", "JavaScript", "Python", "Java", "C++", "AWS", "Firebase", "Node.js", "SQL", "Docker", "Kubernetes", "Go", "Rust"];
+    const foundSkills = commonSkills.filter(skill =>
+        text.toLowerCase().includes(skill.toLowerCase())
+    );
+
+    return {
+        name: possibleName,
+        email: emailMatch ? emailMatch[0] : "",
+        skills: foundSkills,
+        summary: text.slice(0, 200) + "..." // Simple summary
+    };
+};
+
+import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
+import { storage } from "../firebaseConfig";
+
+export const uploadFile = async (file: File, path: string): Promise<string> => {
+    try {
+        const storageRef = ref(storage, path);
+        const snapshot = await uploadBytes(storageRef, file);
+        return await getDownloadURL(snapshot.ref);
+    } catch (error) {
+        console.error("Error uploading file:", error);
+        throw error;
+    }
+};
