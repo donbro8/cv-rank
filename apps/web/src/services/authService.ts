@@ -1,8 +1,8 @@
 
-import { 
-  createUserWithEmailAndPassword, 
-  signInWithEmailAndPassword, 
-  signOut, 
+import {
+  createUserWithEmailAndPassword,
+  signInWithEmailAndPassword,
+  signOut,
   updateProfile,
   signInWithPopup,
   GoogleAuthProvider,
@@ -26,9 +26,17 @@ const mapUser = (firebaseUser: FirebaseUser): User => {
   };
 };
 
+const MOCK_USER: User = {
+  username: "Test User",
+  email: "test@example.com",
+  uid: "mock-user-123"
+};
+
+const MOCK_STORAGE_KEY = 'mock_auth_session';
+
 export const register = async (username: string, email: string, password: string): Promise<User> => {
   const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-  
+
   // Update the display name
   await updateProfile(userCredential.user, {
     displayName: username
@@ -38,6 +46,12 @@ export const register = async (username: string, email: string, password: string
 };
 
 export const login = async (email: string, password: string): Promise<User> => {
+  // Mock Auth Bypass
+  if (email === 'test@example.com' && password === 'password123') {
+    localStorage.setItem(MOCK_STORAGE_KEY, 'true');
+    return MOCK_USER;
+  }
+
   const userCredential = await signInWithEmailAndPassword(auth, email, password);
   return mapUser(userCredential.user);
 };
@@ -49,11 +63,25 @@ export const loginWithGoogle = async (): Promise<User> => {
 };
 
 export const logout = async (): Promise<void> => {
+  // Clear mock session
+  if (localStorage.getItem(MOCK_STORAGE_KEY)) {
+    localStorage.removeItem(MOCK_STORAGE_KEY);
+    // Force page reload to clear state effectively since we can't easily trigger the auth listener for mock logout
+    window.location.reload();
+    return;
+  }
   await signOut(auth);
 };
 
 // Listener for auth state changes
 export const subscribeToAuthChanges = (callback: (user: User | null) => void) => {
+  // Check for mock session on init
+  if (typeof window !== 'undefined' && localStorage.getItem(MOCK_STORAGE_KEY) === 'true') {
+    callback(MOCK_USER);
+    // Return a no-op unsubscribe function for mock auth
+    return () => { };
+  }
+
   return onAuthStateChanged(auth, (firebaseUser) => {
     callback(firebaseUser ? mapUser(firebaseUser) : null);
   });
