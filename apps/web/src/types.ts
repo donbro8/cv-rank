@@ -7,10 +7,13 @@ export interface DocumentFile {
   type: 'job-spec' | 'cv';
 }
 
+export type CandidateStage = 'new' | 'screening' | 'interview' | 'offer' | 'rejected' | 'closed';
+
 export interface CandidateResult extends DocumentFile {
   score: number; // 0 to 1
   embedding?: number[];
   summary?: string;
+  stage?: CandidateStage;
 }
 
 export enum AppStatus {

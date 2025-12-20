@@ -3,7 +3,8 @@ import { DropZone } from '../components/DropZone';
 import { ResultCard } from '../components/ResultCard';
 import { PreviewModal } from '../components/PreviewModal';
 import { ModelSettings } from '../components/ModelSettings';
-import { DocumentFile, CandidateResult, AppStatus, SavedJob } from '../types';
+import { KanbanBoard } from '../components/KanbanBoard';
+import { DocumentFile, CandidateResult, AppStatus, SavedJob, CandidateStage } from '../types';
 import { readFileContent } from '../services/fileService';
 import { generateEmbedding, preloadModel, getAiModel } from '../services/localAiService';
 import { cosineSimilarity } from '../utils/math';
@@ -38,6 +39,40 @@ export const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
     const [showSettings, setShowSettings] = useState(false);
     const [errorMessage, setErrorMessage] = useState<string | null>(null);
     const [loadingModel, setLoadingModel] = useState(false);
+    const [viewMode, setViewMode] = useState<'list' | 'kanban'>('list');
+
+    const handleStatusChange = async (candidateId: string, newStage: CandidateStage) => {
+        // Optimistic update
+        const updatedResults = results.map(c =>
+            c.id === candidateId ? { ...c, stage: newStage } : c
+        );
+        setResults(updatedResults);
+
+        // Also update candidates list to keep them in sync
+        const updatedCandidates = candidates.map(c =>
+            c.id === candidateId ? { ...c, stage: newStage } : c
+        );
+        setCandidates(updatedCandidates);
+
+        // Auto-save if we have a job ID
+        if (currentJobId && user) {
+            try {
+                // Construct updated job object
+                const updatedJob: SavedJob = {
+                    id: currentJobId,
+                    userId: user.uid,
+                    name: jobName,
+                    updatedAt: Date.now(),
+                    jobSpec,
+                    candidates: updatedResults, // Use updated results with new stages
+                };
+                await jobService.saveJob(updatedJob);
+            } catch (err) {
+                console.error("Failed to auto-save stage change", err);
+                // Optionally show toast or error
+            }
+        }
+    };
 
     // Initialize Data when User is available
     useEffect(() => {
@@ -535,7 +570,25 @@ export const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
                 <div className="lg:col-span-8">
                     <div className="bg-white rounded-2xl shadow-sm min-h-[600px] border border-gray-100 flex flex-col h-full">
                         <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-gray-50/50 rounded-t-2xl">
-                            <h2 className="text-xl font-bold text-gray-900">Analysis Results</h2>
+                            <div className="flex items-center gap-4">
+                                <h2 className="text-xl font-bold text-gray-900">Analysis Results</h2>
+                                {results.length > 0 && (
+                                    <div className="flex bg-gray-200/50 p-0.5 rounded-lg border border-gray-200">
+                                        <button
+                                            onClick={() => setViewMode('list')}
+                                            className={`px-3 py-1 text-xs font-medium rounded-md transition-all ${viewMode === 'list' ? 'bg-white text-gray-800 shadow-sm' : 'text-gray-600 hover:bg-gray-200'}`}
+                                        >
+                                            List
+                                        </button>
+                                        <button
+                                            onClick={() => setViewMode('kanban')}
+                                            className={`px-3 py-1 text-xs font-medium rounded-md transition-all ${viewMode === 'kanban' ? 'bg-white text-gray-800 shadow-sm' : 'text-gray-600 hover:bg-gray-200'}`}
+                                        >
+                                            Kanban
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
                             {results.length > 0 && (
                                 <span className="bg-green-100 text-green-700 text-xs px-2 py-1 rounded-full font-medium">
                                     Analysis Complete
@@ -543,7 +596,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
                             )}
                         </div>
 
-                        <div className="p-6 flex-1 overflow-y-auto bg-gray-50/30">
+                        <div className={`flex-1 overflow-y-auto ${viewMode === 'kanban' ? 'bg-gray-100 p-4' : 'bg-gray-50/30 p-6'}`}>
                             {results.length === 0 ? (
                                 <div className="h-full flex flex-col items-center justify-center text-gray-400 space-y-4">
                                     {status === AppStatus.ANALYZING ? (
@@ -561,16 +614,28 @@ export const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
                                     )}
                                 </div>
                             ) : (
-                                <div className="space-y-4">
-                                    {results.map((candidate, index) => (
-                                        <ResultCard
-                                            key={candidate.id}
-                                            candidate={candidate}
-                                            rank={index + 1}
-                                            onClick={() => setPreviewFile(candidate)}
-                                        />
-                                    ))}
-                                </div>
+                                <>
+                                    {viewMode === 'list' ? (
+                                        <div className="space-y-4">
+                                            {results.map((candidate, index) => (
+                                                <ResultCard
+                                                    key={candidate.id}
+                                                    candidate={candidate}
+                                                    rank={index + 1}
+                                                    onClick={() => setPreviewFile(candidate)}
+                                                />
+                                            ))}
+                                        </div>
+                                    ) : (
+                                        <div className="h-full">
+                                            <KanbanBoard
+                                                candidates={results}
+                                                onStatusChange={handleStatusChange}
+                                                onCardClick={setPreviewFile}
+                                            />
+                                        </div>
+                                    )}
+                                </>
                             )}
                         </div>
                     </div>
