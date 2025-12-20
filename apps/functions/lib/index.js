@@ -52,13 +52,39 @@ exports.onFileUpload = (0, storage_1.onObjectFinalized)({ cpu: 2 }, async (event
         return;
     }
     logger.info(`File uploaded: ${filePath} (${contentType}) in bucket ${fileBucket}`);
-    // TODO: Implement Resume Processing Logic
-    // 1. Download file
-    // 2. Parse content (PDF/DOCX)
-    // 3. Generate Embeddings (Vertex AI)
-    // 4. Store in Vector DB (Pinecone)
-    // 5. Update Firestore Document
-    // For now, we just log that we received it.
-    logger.log("Resume processing trigger received. Pipeline not yet implemented.");
+    // Filter only for resumes directory
+    if (!filePath.startsWith("resumes/")) {
+        logger.info("File upload outside of resumes/ directory. Ignoring.");
+        return;
+    }
+    // Initialize Cloud Tasks Client
+    const { CloudTasksClient } = await Promise.resolve().then(() => require("@google-cloud/tasks"));
+    const client = new CloudTasksClient();
+    // TODO: Make these configurable via environment variables
+    const project = process.env.GCLOUD_PROJECT || "cv-rank-dev";
+    const location = "us-central1"; // Default location
+    const queue = "resume-processing";
+    const parent = client.queuePath(project, location, queue);
+    const task = {
+        httpRequest: {
+            httpMethod: "POST",
+            url: `https://${location}-${project}.cloudfunctions.net/processResume`,
+            headers: {
+                "Content-Type": "application/json",
+            },
+            body: Buffer.from(JSON.stringify({
+                bucket: fileBucket,
+                name: filePath,
+                contentType: contentType
+            })).toString("base64"),
+        },
+    };
+    try {
+        const [response] = await client.createTask({ parent, task });
+        logger.info(`Created task ${response.name} for file ${filePath}`);
+    }
+    catch (error) {
+        logger.error(`Error creating task for ${filePath}:`, error);
+    }
 });
 //# sourceMappingURL=index.js.map
