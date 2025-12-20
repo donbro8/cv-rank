@@ -86,7 +86,8 @@ export const onFileUpload = onObjectFinalized({ cpu: 2 }, async (event) => {
             body: Buffer.from(JSON.stringify({
                 bucket: fileBucket,
                 name: filePath,
-                contentType: contentType
+                contentType: contentType,
+                metadata: event.data.metadata || {} // Pass custom metadata
             })).toString("base64"),
         },
     };

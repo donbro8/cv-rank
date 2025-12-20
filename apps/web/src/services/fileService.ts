@@ -111,10 +111,11 @@ export const extractMetadata = async (text: string) => {
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { storage } from "../firebaseConfig";
 
-export const uploadFile = async (file: File, path: string): Promise<string> => {
+export const uploadFile = async (file: File, path: string, metadata?: any): Promise<string> => {
     try {
         const storageRef = ref(storage, path);
-        const snapshot = await uploadBytes(storageRef, file);
+        const uploadMetadata = metadata ? { customMetadata: metadata } : undefined;
+        const snapshot = await uploadBytes(storageRef, file, uploadMetadata);
         return await getDownloadURL(snapshot.ref);
     } catch (error) {
         console.error("Error uploading file:", error);

@@ -57,13 +57,16 @@ const AppRoutes: React.FC = () => {
 
 
 import { preloadModel } from './services/localAiService';
+import { ProcessingProvider } from './context/ProcessingContext';
 
 const App: React.FC = () => {
   return (
     <AuthProvider>
-      <PrivacyProvider>
-        <AppContent />
-      </PrivacyProvider>
+      <ProcessingProvider>
+        <PrivacyProvider>
+          <AppContent />
+        </PrivacyProvider>
+      </ProcessingProvider>
     </AuthProvider>
   );
 };

@@ -1,22 +1,31 @@
-import pdf from 'pdf-parse';
+const pdf = require('pdf-parse');
 import { FirebaseService } from '../services/firebaseService';
 import { GeminiService } from '../services/geminiService';
 import { VectorService } from '../services/vectorService';
+
+import { CompensationProcessor } from './compensationProcessor';
 
 export class ResumeProcessor {
     private firebaseService: FirebaseService;
     private geminiService: GeminiService;
     private vectorService: VectorService;
+    private compensationProcessor: CompensationProcessor;
 
     constructor() {
         this.firebaseService = new FirebaseService();
         this.geminiService = new GeminiService();
         this.vectorService = new VectorService();
+        this.compensationProcessor = new CompensationProcessor();
     }
 
     private async updateStatus(metadata: any, status: string, step: string) {
         if (metadata.companyId && metadata.roleId && metadata.applicationId) {
             const path = `companies/${metadata.companyId}/departments/${metadata.departmentId || 'default'}/roles/${metadata.roleId}/applications`;
+
+            // Log to stream
+            await this.firebaseService.addLogEntry(path, metadata.applicationId, step);
+
+            // Update status
             await this.firebaseService.updateDocument(path, metadata.applicationId, {
                 status,
                 currentStep: step,
@@ -48,9 +57,15 @@ export class ResumeProcessor {
 
         console.log(`Generated embedding of length ${embedding.length}`);
 
+        await this.updateStatus(metadata, 'Processing', 'Analyzing compensation expectations...');
+
+        // 4. Run Compensation Daemon
+        const compensationAnalysis = await this.compensationProcessor.analyze(text);
+        console.log('Compensation Analysis:', compensationAnalysis);
+
         await this.updateStatus(metadata, 'Processing', 'Indexing candidate in vector database...');
 
-        // 4. Upsert to Pinecone
+        // 5. Upsert to Pinecone
         // Use filePath or a dedicated ID from metadata
         const docId = metadata.docId || filePath;
 
@@ -60,7 +75,7 @@ export class ResumeProcessor {
             type: 'resume'
         });
 
-        // 5. Update Firestore Status - Complete
+        // 6. Update Firestore Status - Complete
         if (metadata.companyId && metadata.roleId && metadata.applicationId) {
             const path = `companies/${metadata.companyId}/departments/${metadata.departmentId || 'default'}/roles/${metadata.roleId}/applications`;
             await this.firebaseService.updateDocument(path, metadata.applicationId, {
@@ -68,8 +83,10 @@ export class ResumeProcessor {
                 currentStep: 'Completed',
                 processedAt: new Date().toISOString(),
                 embeddingStatus: 'success',
-                parsedTextLength: text.length
+                parsedTextLength: text.length,
+                compensationAnalysis // Save the analysis result
             });
+            await this.firebaseService.addLogEntry(path, metadata.applicationId, 'Processing Complete.');
         }
 
         return { success: true, textLength: text.length };

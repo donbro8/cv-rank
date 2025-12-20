@@ -11,6 +11,7 @@ import * as authService from '../services/authService';
 import * as jobService from '../services/jobService';
 import { usePrivacy } from '../context/PrivacyContext';
 import { uploadFile } from '../services/fileService';
+import { useProcessing } from '../context/ProcessingContext';
 
 interface DashboardProps {
     user: authService.User;
@@ -24,6 +25,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
     const [jobName, setJobName] = useState<string>("Untitled Job");
     const [savedJobs, setSavedJobs] = useState<SavedJob[]>([]);
     const { isPrivacyMode } = usePrivacy();
+    const { setActiveApplication } = useProcessing();
 
     // App Data State
     const [jobSpec, setJobSpec] = useState<DocumentFile | null>(null);
@@ -243,12 +245,32 @@ export const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
             }
 
             try {
+                const applicationId = `app-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+                const companyId = 'default-company';
+                const roleId = 'default-role';
+                const departmentId = 'default';
+
                 // Upload to Firebase if not in Privacy Mode
                 if (!isPrivacyMode && user) {
                     try {
                         const path = `resumes/${user.uid}/${Date.now()}_${file.name}`;
                         console.log(`Uploading ${file.name} to ${path}...`);
-                        await uploadFile(file, path);
+
+                        // Set active context for Stream of Thought
+                        setActiveApplication({
+                            companyId,
+                            roleId,
+                            applicationId,
+                            departmentId
+                        });
+
+                        await uploadFile(file, path, {
+                            companyId,
+                            roleId,
+                            applicationId,
+                            departmentId,
+                            docId: `cand-${Date.now()}` // Match logic or use consistent ID
+                        });
                         console.log("Upload complete.");
                     } catch (uploadErr) {
                         console.error("Upload failed (continuing with local processing):", uploadErr);
@@ -264,7 +286,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
                 }
 
                 const newCandidate: DocumentFile = {
-                    id: `cand-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+                    id: applicationId, // Use the same ID
                     name: file.name,
                     text,
                     file,

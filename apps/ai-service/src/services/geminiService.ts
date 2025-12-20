@@ -81,4 +81,25 @@ export class GeminiService {
             throw error;
         }
     }
+
+    async extractCompensation(text: string): Promise<{ min?: number, max?: number, currency?: string, frequency?: string }> {
+        const prompt = `
+            Extract compensation information from the following resume text.
+            Return ONLY a JSON object with keys: min (number), max (number), currency (string, ISO code), frequency (string, e.g., "yearly", "monthly", "hourly").
+            If no specific compensation is mentioned, return an empty object {}.
+            
+            Resume Text:
+            ${text.substring(0, 5000)}
+        `;
+
+        try {
+            const result = await this.generateContent(prompt);
+            // Clean up potentially md formatted json
+            const cleaned = result.replace(/```json/g, '').replace(/```/g, '').trim();
+            return JSON.parse(cleaned);
+        } catch (error) {
+            console.warn('Failed to parse compensation:', error);
+            return {};
+        }
+    }
 }

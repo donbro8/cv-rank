@@ -31,4 +31,15 @@ export class FirebaseService {
     async setDocument(collectionPath: string, docId: string, data: any) {
         await this.firestore.collection(collectionPath).doc(docId).set(data, { merge: true });
     }
+
+    async addLogEntry(collectionPath: string, docId: string, message: string) {
+        const timestamp = new Date().toISOString();
+        await this.firestore.collection(collectionPath).doc(docId).update({
+            processingLogs: admin.firestore.FieldValue.arrayUnion({
+                timestamp,
+                message,
+                step: 'Processing'
+            })
+        });
+    }
 }

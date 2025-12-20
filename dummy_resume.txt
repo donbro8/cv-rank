@@ -1,0 +1,14 @@
+John Doe
+Software Engineer
+Email: john.doe@example.com
+
+Summary:
+Experienced Software Engineer with a focus on React, TypeScript, and Node.js.
+Looking for a salary between $130,000 and $160,000.
+
+Experience:
+Senior Developer at Tech Co (2020-Present)
+- Built scalable web apps using React and Firebase.
+
+Education:
+BS in Computer Science
